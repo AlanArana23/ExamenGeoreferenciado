@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>GIS Interactivo - Red de Transporte + Buffer</title>
+
+    <!-- Estilos de Leaflet para mostrar correctamente el mapa -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Librería Leaflet para mapas interactivos -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Librería Turf.js para análisis geoespacial (como buffers) -->
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+
+    <style>
+        /* Tamaño del mapa */
+        #map {
+            height: 600px;
+            width: 100%;
+        }
+
+        /* Estilo general del cuerpo del documento */
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<h2>🗺️ Caso Práctico GIS: Red de Transporte + Buffer + Proximidad</h2>
+
+<!-- Contenedor del mapa -->
+<div id="map"></div>
+
+<script>
+    // Inicializa el mapa centrado en CDMX con un zoom de 14
+    const map = L.map('map').setView([19.43, -99.13], 14);
+
+    // 🌍 Capa base raster desde OpenStreetMap
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // 📍 ESTACIONES: puntos vectoriales representando estaciones de transporte
+    const estaciones = [
+        { nombre: "Estación 1", coords: [19.4300, -99.1350] },
+        { nombre: "Estación 2", coords: [19.4340, -99.1320] },
+        { nombre: "Estación 3", coords: [19.4370, -99.1290] }
+    ];
+
+    // ➖ RUTA: línea que une las estaciones (modelo vectorial lineal)
+    const ruta = estaciones.map(e => e.coords);
+    L.polyline(ruta, { color: 'red', weight: 4 }) // Línea roja gruesa
+        .addTo(map)
+        .bindPopup("Ruta de transporte");
+
+    // 🔲 ZONA URBANA: polígono que simula una zona de interés (modelo vectorial de área)
+    const zona = [
+        [19.4280, -99.1400],
+        [19.4280, -99.1250],
+        [19.4390, -99.1250],
+        [19.4390, -99.1400]
+    ];
+    L.polygon(zona, { color: 'gray', fillOpacity: 0.1 }) // Polígono gris translúcido
+        .addTo(map)
+        .bindPopup("Zona urbana simulada");
+
+    // 🔵 BUFFERS: zonas de influencia de 300 metros alrededor de cada estación
+    estaciones.forEach(est => {
+        // Crear punto GeoJSON usando Turf.js (formato [lng, lat])
+        const punto = turf.point([est.coords[1], est.coords[0]]);
+        // Generar buffer de 0.3 km alrededor del punto
+        const buffer = turf.buffer(punto, 0.3, { units: 'kilometers' });
+
+        // Mostrar el buffer en el mapa como GeoJSON
+        L.geoJSON(buffer, {
+            style: { color: 'blue', fillOpacity: 0.2 } // Estilo del buffer
+        }).addTo(map)
+          .bindPopup(`Buffer de 300m alrededor de ${est.nombre}`);
+
+        // Mostrar también el marcador de la estación
+        L.marker(est.coords).addTo(map)
+            .bindPopup(est.nombre);
+    });
+
+    // 📌 PUNTO DE INTERÉS: por ejemplo, una escuela o centro de salud
+    const ptoInteres = [19.4335, -99.1305]; // Coordenadas del punto
+    const marcador = L.marker(ptoInteres, { title: "Escuela Central" }) // Crear marcador
+        .addTo(map)
+        .bindPopup("🎓 Escuela Central (Punto de interés)");
+
+</script>
+
+</body>
+</html>

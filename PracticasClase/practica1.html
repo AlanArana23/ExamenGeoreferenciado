@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>Mapa con Leaflet - Modelo Vectorial</title>
+
+    <!-- Enlace al CSS de Leaflet para estilos del mapa -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Enlace al script de Leaflet para funcionalidades del mapa -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        /* Estilo para el contenedor del mapa */
+        #map {
+            height: 500px;     /* Altura del mapa */
+            width: 100%;       /* Ancho completo */
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Título del mapa -->
+    <h2>Ejemplo de Almacenamiento Vectorial con Leaflet</h2>
+
+    <!-- Contenedor del mapa -->
+    <div id="map"></div>
+
+    <script>
+        // Inicializar el mapa con Leaflet centrado en la Ciudad de México (lat, lng) y zoom 13
+        var map = L.map('map').setView([19.4326, -99.1332], 13); // CDMX
+
+        // Añadir la capa base raster desde OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors' // Atribución obligatoria
+        }).addTo(map);
+
+        // 🌐 PUNTO VECTORIAL: Crear un marcador en CDMX
+        L.marker([19.4326, -99.1332]).addTo(map)
+            .bindPopup('<b>CDMX</b><br>Este es un punto vectorial (marcador).'); // Popup informativo
+
+        // ➖ LÍNEA VECTORIAL: Crear una ruta conectando 3 puntos 
+        const ruta = [
+            [19.4326, -99.1332], // Punto 1 (inicio)
+            [19.4375, -99.1410], // Punto 2 (intermedio)
+            [19.4450, -99.1500]  // Punto 3 (fin)
+        ];
+        L.polyline(ruta, { color: 'blue' }) // Línea azul
+            .addTo(map)
+            .bindPopup("Ruta de transporte (línea vectorial)");
+
+        // 🔲 POLÍGONO VECTORIAL: Definir una zona (como un parque o área urbana)
+        const zona = [
+            [19.4300, -99.1350],
+            [19.4330, -99.1350],
+            [19.4330, -99.1300],
+            [19.4300, -99.1300]
+        ];
+        L.polygon(zona, { color: 'green' }) // Polígono verde
+            .addTo(map)
+            .bindPopup("Área de parque o zona (polígono vectorial)");
+
+        // 🌍 Animación de la vista: mueve la cámara hacia una nueva posición con más zoom
+        map.flyTo([19.4330, -99.1330], 14);
+
+    </script>
+</body>
+</html>

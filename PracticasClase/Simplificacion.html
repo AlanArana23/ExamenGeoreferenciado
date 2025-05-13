@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Editor de Polígonos Georreferenciados</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f2f5;
+      margin: 0;
+      text-align: center;
+    }
+    h1 {
+      background-color: #ff9800;
+      color: white;
+      margin: 0;
+      padding: 15px;
+    }
+    #map {
+      height: 75vh;
+      width: 100%;
+    }
+    .controls {
+      background-color: #e3f2fd;
+      padding: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+    .controls button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .controls button:hover {
+      background-color: #0056b3;
+    }
+    .sub-controls {
+      display: none;
+      gap: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Editor de Polígonos Georreferenciados</h1>
+  <div class="controls">
+    <button onclick="mostrarOpcionesRotar()">🔄 Rotar</button>
+    <button onclick="iniciarTraslado()">🚚 Trasladar</button>
+    <button onclick="mostrarOpcionesEscalar()">📏 Escalar</button>
+    <button onclick="unirPoligonos()">➕ Unión</button>
+    <button onclick="intersecarPoligonos()">✖️ Intersección</button>
+    <button onclick="simplificarUnion()">✂️ Simplificar unión</button>
+    <div class="sub-controls" id="rotateOptions">
+      <button onclick="Rotar('centroid')">Por centroide</button>
+      <button onclick="Rotar('click')">Por punto</button>
+    </div>
+    <div class="sub-controls" id="scaleOptions">
+      <button onclick="Escalar(1.1)">+</button>
+      <button onclick="Escalar(0.9)">−</button>
+    </div>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+  <script>
+    const map = L.map('map').setView([23.6345, -102.5528], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    new L.Control.Draw({
+      draw: { marker: false, circlemarker: false, polyline: false, circle: false },
+      edit: { featureGroup: drawnItems }
+    }).addTo(map);
+
+    let seleccionados = [], contador = 1, unionGuardada = null;
+
+    map.on(L.Draw.Event.CREATED, e => {
+      const layer = e.layer;
+      const nombre = prompt("Nombre del polígono:", `Polígono ${contador++}`) || `Polígono ${contador}`;
+      layer.bindTooltip(nombre).openTooltip();
+      layer.on('click', () => toggleSeleccion(layer));
+      drawnItems.addLayer(layer);
+    });
+
+    function toggleSeleccion(layer) {
+      if (seleccionados.includes(layer)) {
+        seleccionados = seleccionados.filter(l => l !== layer);
+        layer.setStyle({ color: '#3388ff' });
+      } else {
+        seleccionados.push(layer);
+        layer.setStyle({ color: 'red' });
+      }
+    }
+
+    function mostrarOpcionesRotar() {
+      document.getElementById('rotateOptions').style.display = 'flex';
+      document.getElementById('scaleOptions').style.display = 'none';
+    }
+
+    function mostrarOpcionesEscalar() {
+      document.getElementById('scaleOptions').style.display = 'flex';
+      document.getElementById('rotateOptions').style.display = 'none';
+    }
+
+    function Rotar(tipo) {
+      if (seleccionados.length === 0) return alert("Selecciona al menos un polígono.");
+      if (tipo === 'click') {
+        alert("Haz click en el mapa para indicar el punto de rotación.");
+        map.once('click', e => {
+          const punto = [e.latlng.lng, e.latlng.lat];
+          seleccionados.forEach(layer => {
+            const geo = layer.toGeoJSON();
+            const rotado = turf.transformRotate(geo, 25, { pivot: punto });
+            reemplazarFigura(layer, rotado);
+          });
+        });
+      } else {
+        seleccionados.forEach(layer => {
+          const geo = layer.toGeoJSON();
+          const centroide = turf.centroid(geo).geometry.coordinates;
+          const rotado = turf.transformRotate(geo, 25, { pivot: centroide });
+          reemplazarFigura(layer, rotado);
+        });
+      }
+    }
+
+    function iniciarTraslado() {
+      if (seleccionados.length === 0) return alert("Selecciona al menos un polígono.");
+      alert("Haz click en el mapa para indicar a dónde trasladar.");
+      map.once('click', e => {
+        seleccionados.forEach(layer => {
+          const geo = layer.toGeoJSON();
+          const centroide = turf.centroid(geo).geometry.coordinates;
+          const destino = [e.latlng.lng, e.latlng.lat];
+          const distancia = turf.distance(turf.point(centroide), turf.point(destino));
+          const rumbo = turf.bearing(turf.point(centroide), turf.point(destino));
+          const movido = turf.transformTranslate(geo, distancia, rumbo, { units: 'kilometers' });
+          reemplazarFigura(layer, movido);
+        });
+      });
+    }
+
+    function Escalar(factor) {
+      if (seleccionados.length === 0) return alert("Selecciona al menos un polígono.");
+      seleccionados.forEach(layer => {
+        const geo = layer.toGeoJSON();
+        const escalado = turf.transformScale(geo, factor, { origin: 'centroid' });
+        reemplazarFigura(layer, escalado);
+      });
+    }
+
+    function unirPoligonos() {
+      if (seleccionados.length !== 2) return alert("Selecciona exactamente dos polígonos.");
+      const [poly1, poly2] = seleccionados.map(l => l.toGeoJSON());
+      const union = turf.union(poly1, poly2);
+      unionGuardada = union;
+      agregarCapa(union, 'red', 'Unión', '5,5');
+    }
+
+    function intersecarPoligonos() {
+      if (seleccionados.length !== 2) return alert("Selecciona exactamente dos polígonos.");
+      const [poly1, poly2] = seleccionados.map(l => l.toGeoJSON());
+      const intersection = turf.intersect(poly1, poly2);
+      if (!intersection) return alert("No hay intersección.");
+      agregarCapa(intersection, 'purple', 'Intersección');
+    }
+
+    function simplificarUnion() {
+      if (!unionGuardada) return alert("Primero realiza una unión.");
+      const simplified = turf.simplify(unionGuardada, { tolerance: 1, highQuality: true });
+      agregarCapa(simplified, 'black', 'Simplificado');
+    }
+
+    function reemplazarFigura(original, geojson) {
+      const coords = geojson.geometry.coordinates[0].map(c => [c[1], c[0]]);
+      const nuevaCapa = L.polygon(coords, { color: 'red' }).addTo(drawnItems);
+      const nombre = original.getTooltip() ? original.getTooltip().getContent() : 'Polígono';
+      hacerSeleccionable(nuevaCapa, nombre);
+      drawnItems.removeLayer(original);
+      seleccionados = seleccionados.filter(l => l !== original);
+      seleccionados.push(nuevaCapa);
+    }
+
+    function agregarCapa(geojson, color, texto, dash = '') {
+      const layer = L.geoJSON(geojson, { style: { color, dashArray: dash, fillOpacity: 0.3 } }).addTo(map);
+      layer.bindPopup(texto);
+      hacerSeleccionable(layer, texto);
+    }
+
+    function hacerSeleccionable(layer, nombre) {
+      layer.bindTooltip(nombre);
+      layer.on('click', () => toggleSeleccion(layer));
+    }
+  </script>
+</body>
+</html>

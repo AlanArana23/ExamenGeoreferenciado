@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mapa GeoEscolar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: Arial; }
+    #map { height: 100vh; }
+    .sidebar {
+      position: absolute; top: 10px; left: 10px; z-index: 1000;
+      background: white; padding: 10px; border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3); width: 260px;
+    }
+    select, button, input { margin-bottom: 10px; width: 100%; padding: 5px; }
+    label { font-weight: bold; }
+  </style>
+</head>
+<body>
+<div class="sidebar">
+  <h3>Filtros y Análisis</h3>
+  <label for="tipoFiltro">Tipo</label>
+  <select id="tipoFiltro">
+    <option value="todos">Todos</option>
+    <option value="escuela">🏫 Escuelas</option>
+    <option value="biblioteca">📚 Bibliotecas</option>
+    <option value="centro">🏢 Centros Comunitarios</option>
+  </select>
+  <label for="zonaFiltro">Zona</label>
+  <select id="zonaFiltro">
+    <option value="todas">Todas</option>
+    <option value="Zona Centro">Zona Centro</option>
+    <option value="Zona Norte">Zona Norte</option>
+    <option value="Zona Este">Zona Este</option>
+    <option value="Zona Oeste">Zona Oeste</option>
+    <option value="Zona Sur">Zona Sur</option>
+  </select>
+  <button onclick="mostrarBuffer()">🔵 Buffer 500m</button>
+  <button onclick="contarDentro()">📊 Conteo en polígonos</button>
+  <button onclick="seleccionarPuntos()">📏 Distancia entre 2 puntos</button>
+  <button onclick="vecinosRadio()">🔍 Vecinos en radio</button>
+  <button onclick="intersecarPoligonos()">🧩 Intersección de polígonos</button>
+  <p id="resultadoConteo" style="font-weight: bold;"></p>
+</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+<script>
+  const map = L.map('map').setView([21.122, -101.685], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  const markerCluster = L.markerClusterGroup();
+  let centroideClusterLayer;
+
+  markerCluster.on('clusterclick', function (a) {
+    const features = a.layer.getAllChildMarkers().map(m => {
+      const latlng = m.getLatLng();
+      return turf.point([latlng.lng, latlng.lat]);
+    });
+    if (features.length < 2) return;
+    const collection = turf.featureCollection(features);
+    const centroide = turf.centerMean(collection);
+    if (centroideClusterLayer) map.removeLayer(centroideClusterLayer);
+    centroideClusterLayer = L.geoJSON(centroide, {
+      pointToLayer: (f, latlng) =>
+        L.circleMarker(latlng, {
+          radius: 8,
+          color: 'darkred',
+          fillColor: 'yellow',
+          fillOpacity: 0.9
+        }).bindPopup(`Centroide del cluster con ${features.length} puntos`)
+    }).addTo(map);
+  });
+
+  const puntosCapa = L.geoJSON(null, {
+    pointToLayer: (feature, latlng) => {
+      const tipo = feature.properties.tipo;
+      const emoji = tipo === 'escuela' ? '🏫' : tipo === 'biblioteca' ? '📚' : '🏢';
+      const icono = L.divIcon({
+        html: `<div style="font-size: 24px;">${emoji}</div>`,
+        className: '',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      });
+      return L.marker(latlng, { icon: icono }).bindPopup(
+        `<strong>${emoji} ${feature.properties.nombre}</strong><br>` +
+        `Zona: ${feature.properties.zona}<br>` +
+        `Tipo: ${feature.properties.tipo}<br>` +
+        `Capacidad: ${feature.properties.capacidad || 'N/A'}`
+      );
+    }
+  });
+  markerCluster.addLayer(puntosCapa);
+  map.addLayer(markerCluster);
+
+  let geojsonPuntos = null;
+  let geojsonPoligonos = null;
+
+  const poligonosCapa = L.geoJSON(null, {
+    style: f => ({
+      color: f.properties.categoria === 'colonia' ? 'blue' : 'green',
+      fillOpacity: 0.3
+    }),
+    onEachFeature: (feature, layer) => {
+      layer.bindPopup(`<strong>${feature.properties.nombre}</strong> (${feature.properties.categoria})`);
+      layer.on('click', () => {
+        if (poligonosSeleccionados.length < 2) {
+          poligonosSeleccionados.push(layer);
+          layer.setStyle({ color: 'orange' });
+        } else {
+          alert("Ya seleccionaste 2 polígonos.");
+        }
+      });
+    }
+  }).addTo(map);
+
+  let poligonosSeleccionados = [];
+
+  fetch('http://localhost:3000/puntos')
+    .then(res => res.json())
+    .then(data => {
+      geojsonPuntos = data;
+      aplicarFiltros();
+    });
+
+  fetch('http://localhost:3000/poligonos')
+    .then(res => res.json())
+    .then(data => {
+      geojsonPoligonos = data;
+      poligonosCapa.addData(data);
+    });
+
+  function aplicarFiltros() {
+    const tipo = document.getElementById('tipoFiltro').value;
+    const zona = document.getElementById('zonaFiltro').value;
+
+    const filtrados = geojsonPuntos.features.filter(f => {
+      const tipoProp = (f.properties.tipo || '').toLowerCase();
+      const zonaProp = (f.properties.zona || '').toLowerCase();
+
+      const coincideTipo = tipo === 'todos' || tipoProp === tipo.toLowerCase();
+      const coincideZona = zona === 'todas' || zonaProp === zona.toLowerCase();
+
+      return coincideTipo && coincideZona;
+    });
+
+    puntosCapa.clearLayers();
+    puntosCapa.addData({ type: "FeatureCollection", features: filtrados });
+
+    markerCluster.clearLayers();
+    markerCluster.addLayer(puntosCapa);
+
+    document.getElementById("resultadoConteo").textContent =
+      `Resultados: ${filtrados.length} lugares encontrados.`;
+  }
+
+  let bufferLayer;
+function mostrarBuffer() {
+  alert("Haz clic en un punto para aplicar el buffer de 500m.");
+  if (bufferLayer) map.removeLayer(bufferLayer);
+
+  const onClick = e => {
+    map.off('click', onClick); // Desactiva el listener después de un clic
+    const punto = e.latlng;
+    const turfPoint = turf.point([punto.lng, punto.lat]);
+    const buffer = turf.buffer(turfPoint, 0.5, { units: 'kilometers' });
+
+    bufferLayer = L.geoJSON(buffer, {
+      style: { color: 'red', fillOpacity: 0.3 }
+    }).addTo(map);
+  };
+
+  map.on('click', onClick);
+}
+
+  function contarDentro() {
+    geojsonPoligonos.features.forEach(poly => {
+      const dentro = geojsonPuntos.features.filter(p =>
+        turf.booleanPointInPolygon(p, poly)
+      );
+      alert(`${poly.properties.nombre} contiene ${dentro.length} puntos.`);
+    });
+  }
+
+  let centroidesLayer;
+  function calcularCentroides() {
+    if (centroidesLayer) map.removeLayer(centroidesLayer);
+    const centroides = geojsonPoligonos.features.map(poly => {
+      const centro = turf.centroid(poly);
+      centro.properties.nombre = poly.properties.nombre;
+      return centro;
+    });
+    centroidesLayer = L.geoJSON({ type: "FeatureCollection", features: centroides }, {
+      pointToLayer: (f, latlng) =>
+        L.circleMarker(latlng, { radius: 5, color: 'black' }).bindPopup(`Centroide de ${f.properties.nombre}`)
+    }).addTo(map);
+  }
+
+  let centroideLayer;
+  let puntosSeleccionados = [];
+  let lineaDistancia;
+  function seleccionarPuntos() {
+    alert('Haz clic en 2 puntos del mapa para medir distancia.');
+    puntosSeleccionados = [];
+    if (lineaDistancia) map.removeLayer(lineaDistancia);
+    const onClick = e => {
+      puntosSeleccionados.push([e.latlng.lng, e.latlng.lat]);
+      if (puntosSeleccionados.length === 2) {
+        map.off('click', onClick);
+        const pt1 = turf.point(puntosSeleccionados[0]);
+        const pt2 = turf.point(puntosSeleccionados[1]);
+        const distancia = turf.distance(pt1, pt2, { units: 'kilometers' });
+        lineaDistancia = L.polyline([
+          [pt1.geometry.coordinates[1], pt1.geometry.coordinates[0]],
+          [pt2.geometry.coordinates[1], pt2.geometry.coordinates[0]]
+        ], { color: 'purple', weight: 3 }).addTo(map);
+        alert(`Distancia: ${distancia.toFixed(2)} km`);
+      }
+    };
+    map.on('click', onClick);
+  }
+
+  let vecinosLayer;
+  function vecinosRadio() {
+    alert("Haz clic en un punto para ver sus vecinos en 400m.");
+    if (vecinosLayer) map.removeLayer(vecinosLayer);
+
+    const onClick = e => {
+      map.off('click', onClick);
+      const centro = turf.point([e.latlng.lng, e.latlng.lat]);
+      const buffer = turf.buffer(centro, 0.4, { units: 'kilometers' });
+
+      const vecinos = geojsonPuntos.features.filter(p => 
+        turf.booleanPointInPolygon(p, buffer)
+      );
+
+      vecinosLayer = L.geoJSON({
+        type: "FeatureCollection",
+        features: vecinos
+      }, {
+        pointToLayer: (f, latlng) =>
+          L.circleMarker(latlng, {
+            radius: 6,
+            color: 'orange'
+          }).bindPopup(`${f.properties.nombre}`)
+      }).addTo(map);
+
+      L.geoJSON(buffer, { style: { color: 'red', fillOpacity: 0.1 } }).addTo(map);
+      alert(`Vecinos encontrados: ${vecinos.length}`);
+    };
+
+    map.on('click', onClick);
+  }
+
+  let interseccionLayer;
+  function intersecarPoligonos() {
+    if (poligonosSeleccionados.length !== 2) {
+      alert('Selecciona 2 polígonos haciendo clic en ellos.');
+      return;
+    }
+    const p1 = poligonosSeleccionados[0];
+    const p2 = poligonosSeleccionados[1];
+    const interseccion = turf.intersect(p1.feature, p2.feature);
+    if (interseccionLayer) map.removeLayer(interseccionLayer);
+    if (!interseccion) {
+      alert(`No hay intersección entre "${p1.feature.properties.nombre}" y "${p2.feature.properties.nombre}".`);
+    } else {
+      interseccionLayer = L.geoJSON(interseccion, {
+        style: { color: 'magenta', weight: 2, fillOpacity: 0.5 }
+      }).addTo(map);
+      alert(`Intersección entre: ${p1.feature.properties.nombre} y ${p2.feature.properties.nombre}`);
+    }
+
+    poligonosSeleccionados.forEach(p => {
+      p.setStyle({
+        color: p.feature.properties.categoria === 'colonia' ? 'blue' : 'green',
+        fillOpacity: 0.3
+      });
+    });
+    poligonosSeleccionados = [];
+  }
+
+  // Filtros automáticos al cambiar opciones
+  document.getElementById('tipoFiltro').addEventListener('change', aplicarFiltros);
+  document.getElementById('zonaFiltro').addEventListener('change', aplicarFiltros);
+</script>
+</body>
+</html>

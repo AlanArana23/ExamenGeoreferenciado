@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es-mx">
+<head>
+    <meta charset="UTF-8">
+    <title>Transformación de Polígonos</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            text-align: center;
+        }
+
+        #map {
+            height: 85vh;
+            width: 100%;
+        }
+
+        .controls {
+            margin: 10px;
+        }
+
+        input, select {
+            padding: 6px;
+            margin: 5px;
+        }
+
+        button {
+            margin: 5px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Transformaciones de Polígonos</h1>
+
+    <div class="controls">
+        Ángulo: <input type="number" id="angulo" value="25">°
+        <button onclick="RotarPoligono()">🔄 Rotar</button>
+        <button onclick="activarRotacionSobreEje()">🖱️ Rotar sobre eje</button><br><br>
+
+        Trasladar: <input type="number" id="distancia" value="10"> km
+        Dirección:
+        <select id="direccion">
+            <option value="90">Derecha</option>
+            <option value="270">Izquierda</option>
+            <option value="0">Arriba</option>
+            <option value="180">Abajo</option>
+        </select>
+        <button onclick="TrasladarPoligono()">🚚 Trasladar</button><br><br>
+
+        Escalar: <input type="number" step="0.1" min="0.1" id="factorEscala" value="1.2">x
+        <button onclick="EscalarPoligono()">📏 Escalar</button>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+
+    <script>
+        let PoligonoSeleccionado = null;
+        const map = L.map('map', {
+            dragging: true,
+            zoomControl: true,
+            scrollWheelZoom: true
+        }).setView([23.6345, -102.5528], 5);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        const drawControl = new L.Control.Draw({
+            edit: {
+                featureGroup: drawnItems
+            },
+            draw: {
+                polygon: true,
+                rectangle: false,
+                circle: false,
+                polyline: false,
+                marker: false,
+                circlemarker: false
+            }
+        });
+
+        map.addControl(drawControl);
+
+        map.on('draw:created', function (event) {
+            const layer = event.layer;
+            drawnItems.addLayer(layer);
+
+            const latlngs = layer.getLatLngs()[0];
+            const area = L.GeometryUtil.geodesicArea(latlngs) / 1e6;
+            layer.bindPopup(`Área: ${area.toFixed(2)} km²`).openPopup();
+
+            layer.on('click', () => {
+                PoligonoSeleccionado = layer;
+                layer.openPopup();
+            });
+
+            PoligonoSeleccionado = layer;
+        });
+
+        function RotarPoligono() {
+            if (!PoligonoSeleccionado) return alert("Selecciona un polígono primero.");
+
+            const angle = parseFloat(document.getElementById('angulo').value);
+            const geojson = PoligonoSeleccionado.toGeoJSON();
+            const centroid = turf.centroid(geojson);
+            const rotated = turf.transformRotate(geojson, angle, { pivot: centroid.geometry.coordinates });
+
+            reemplazarFigura(rotated, "Área rotada");
+        }
+
+        function TrasladarPoligono() {
+            if (!PoligonoSeleccionado) return alert("Selecciona un polígono primero.");
+
+            const distancia = parseFloat(document.getElementById('distancia').value);
+            const direccion = parseFloat(document.getElementById('direccion').value);
+            const geojson = PoligonoSeleccionado.toGeoJSON();
+            const moved = turf.transformTranslate(geojson, distancia, direccion, { units: 'kilometers' });
+
+            reemplazarFigura(moved, "Área trasladada");
+        }
+
+        function EscalarPoligono() {
+            if (!PoligonoSeleccionado) return alert("Selecciona un polígono primero.");
+
+            const factor = parseFloat(document.getElementById('factorEscala').value);
+            const geojson = PoligonoSeleccionado.toGeoJSON();
+            const scaled = turf.transformScale(geojson, factor, { origin: 'centroid' });
+
+            reemplazarFigura(scaled, `Área escalada (${factor}x)`);
+        }
+
+        function reemplazarFigura(geojson, mensaje) {
+            drawnItems.removeLayer(PoligonoSeleccionado);
+
+            const coords = geojson.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
+            const nuevoPoligono = L.polygon(coords).addTo(drawnItems);
+
+            const newArea = turf.area(geojson) / 1e6;
+            nuevoPoligono.bindPopup(`${mensaje}: ${newArea.toFixed(2)} km²`).openPopup();
+
+            nuevoPoligono.on('click', () => {
+                PoligonoSeleccionado = nuevoPoligono;
+                nuevoPoligono.openPopup();
+            });
+
+            PoligonoSeleccionado = nuevoPoligono;
+        }
+
+        function activarRotacionSobreEje() {
+            if (!PoligonoSeleccionado) return alert("Selecciona un polígono primero.");
+
+            const centroide = turf.centroid(PoligonoSeleccionado.toGeoJSON()).geometry.coordinates;
+            let rotando = false;
+            let anguloAnterior = null;
+            let geojsonActual = PoligonoSeleccionado.toGeoJSON();
+
+            function getAnguloEntrePuntos(p1, p2) {
+                return Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * (180 / Math.PI);
+            }
+
+            map.getContainer().style.cursor = "crosshair";
+            map.dragging.disable();
+
+            map.once('mousedown', (e) => {
+                rotando = true;
+                const start = [e.latlng.lng, e.latlng.lat];
+                anguloAnterior = getAnguloEntrePuntos(centroide, start);
+
+                function onMouseMove(ev) {
+                    if (!rotando) return;
+
+                    const actual = [ev.latlng.lng, ev.latlng.lat];
+                    const anguloActual = getAnguloEntrePuntos(centroide, actual);
+                    const diferencia = anguloActual - anguloAnterior;
+
+                    geojsonActual = turf.transformRotate(geojsonActual, diferencia, { pivot: centroide });
+                    anguloAnterior = anguloActual;
+
+                    drawnItems.removeLayer(PoligonoSeleccionado);
+                    const coords = geojsonActual.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
+                    PoligonoSeleccionado = L.polygon(coords).addTo(drawnItems);
+                    PoligonoSeleccionado.bindPopup(`Rotado sobre eje`).openPopup();
+
+                    PoligonoSeleccionado.on('click', () => {
+                        PoligonoSeleccionado = PoligonoSeleccionado;
+                        PoligonoSeleccionado.openPopup();
+                    });
+                }
+
+                function onMouseUp() {
+                    rotando = false;
+                    map.getContainer().style.cursor = "";
+                    map.off('mousemove', onMouseMove);
+                    map.off('mouseup', onMouseUp);
+                    map.dragging.enable();
+                }
+
+                map.on('mousemove', onMouseMove);
+                map.on('mouseup', onMouseUp);
+            });
+        }
+    </script>
+
+</body>
+</html>

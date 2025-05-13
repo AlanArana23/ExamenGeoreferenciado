@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Red de Transporte con Almacenamiento Vectorial</title>
+
+    <!-- Estilos de Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Script de la librería Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        /* Estilo del contenedor del mapa */
+        #map {
+            height: 500px;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        /* Estilo básico del cuerpo del documento */
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Título del mapa -->
+    <h2>Ejemplo: Red de Transporte (Modelo Vectorial en GIS)</h2>
+
+    <!-- Contenedor del mapa -->
+    <div id="map"></div>
+
+    <script>
+        // Inicialización del mapa centrado en la zona centro de la Ciudad de México
+        const map = L.map('map').setView([19.4270, -99.1380], 14);
+
+        // 🗺️ Capa base: Mapa raster de OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // 📍 ESTACIONES: Puntos vectoriales que representan estaciones de transporte
+        const estaciones = [
+            { nombre: "Estación A", coords: [19.4270, -99.1380] },
+            { nombre: "Estación B", coords: [19.4305, -99.1410] },
+            { nombre: "Estación C", coords: [19.4340, -99.1450] }
+        ];
+
+        // Crear marcadores para cada estación con popup informativo
+        estaciones.forEach(estacion => {
+            L.marker(estacion.coords)
+                .addTo(map)
+                .bindPopup(`<b>${estacion.nombre}</b><br>Punto vectorial`);
+        });
+
+        // ➖ RUTA: Línea vectorial que conecta las estaciones (recorrido del transporte)
+        const recorrido = estaciones.map(e => e.coords); // Extraer coordenadas
+        L.polyline(recorrido, { color: 'red', weight: 4 }) // Línea roja con grosor 4
+            .addTo(map)
+            .bindPopup("Recorrido del transporte");
+
+        // 🔲 POLÍGONO: Representa una zona de cobertura (por ejemplo, área atendida)
+        const zonaCobertura = [
+            [19.4250, -99.1430],
+            [19.4380, -99.1430],
+            [19.4380, -99.1340],
+            [19.4250, -99.1340]
+        ];
+        L.polygon(zonaCobertura, { color: 'green', fillOpacity: 0.2 }) // Polígono verde semitransparente
+            .addTo(map)
+            .bindPopup("Zona de cobertura del transporte");
+
+        // Ajustar la vista del mapa con una animación hacia el centro de la red
+        map.flyTo([19.4300, -99.1380], 15);
+
+    </script>
+
+</body>
+</html>

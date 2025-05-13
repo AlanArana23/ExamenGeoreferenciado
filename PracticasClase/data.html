@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>Mapa con Leaflet - Modelo Vectorial</title>
+
+    <!-- Enlace al CSS de Leaflet para estilos del mapa -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Enlace al script de Leaflet para funcionalidades del mapa -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        /* Estilo para el contenedor del mapa */
+        #map {
+            height: 500px;     /* Altura del mapa */
+            width: 100%;       /* Ancho completo */
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Título del mapa -->
+    <h2>Ejemplo de Almacenamiento Vectorial con Leaflet</h2>
+
+    <!-- Contenedor del mapa -->
+    <div id="map"></div>
+
+<script>
+    const map = L.map('map')
+      .setView([19.4326, -99.1332], 13);
+  
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
+      .addTo(map);
+  
+    fetch('http://localhost:3000/puntos')
+      .then(res => res.json())
+      .then(data => {
+        L.geoJSON(data, {
+          onEachFeature: (feature, layer) => {
+            layer.bindPopup(feature.properties.nombre);
+          }
+        }).addTo(map);
+      });
+  </script>
+
+</body>
+</html>
